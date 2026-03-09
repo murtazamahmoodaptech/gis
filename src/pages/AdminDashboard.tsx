@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   LogOut, Search, Filter, Pencil, Trash2, Eye, Download, Plus,
-  CalendarDays, Clock, DollarSign, Users, CheckCircle, AlertCircle, Tag
+  CalendarDays, Clock, DollarSign, Users, CheckCircle, AlertCircle, Tag, Star
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +49,18 @@ interface Contact {
   subject: string;
   message: string;
   status: 'New' | 'Reviewed' | 'Responded' | 'Resolved';
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Feedback {
+  _id: string;
+  name: string;
+  email: string;
+  rating: number;
+  title: string;
+  feedback: string;
+  status: 'pending' | 'draft' | 'publish';
   createdAt: string;
   updatedAt: string;
 }
@@ -107,8 +119,17 @@ export default function AdminDashboard() {
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 
+  // Feedback state
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [feedbacksLoading, setFeedbacksLoading] = useState(false);
+  const [feedbackSearch, setFeedbackSearch] = useState("");
+  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState("all");
+  const [editingFeedback, setEditingFeedback] = useState<Feedback | null>(null);
+  const [editFeedbackStatus, setEditFeedbackStatus] = useState("");
+  const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
+
   // Delete confirmation state
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'appointment' | 'user' | 'coupon' | 'contact' | null; id: string }>({ type: null, id: '' });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'appointment' | 'user' | 'coupon' | 'contact' | 'feedback' | null; id: string }>({ type: null, id: '' });
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Load users and coupons on mount
@@ -118,6 +139,7 @@ export default function AdminDashboard() {
       fetchCoupons();
       fetchAppointments();
       fetchContacts();
+      fetchFeedbacks();
     }
   }, [token]);
 
@@ -437,6 +459,9 @@ export default function AdminDashboard() {
         case 'contact':
           endpoint = `http://localhost:3000/api/contact?id=${deleteConfirm.id}`;
           break;
+        case 'feedback':
+          endpoint = `http://localhost:3000/api/feedback?id=${deleteConfirm.id}`;
+          break;
       }
 
       const response = await fetch(endpoint, {
@@ -457,6 +482,7 @@ export default function AdminDashboard() {
         else if (deleteConfirm.type === 'user') fetchUsers();
         else if (deleteConfirm.type === 'coupon') fetchCoupons();
         else if (deleteConfirm.type === 'contact') fetchContacts();
+        else if (deleteConfirm.type === 'feedback') fetchFeedbacks();
       } else {
         toast.error(data.message || `Failed to delete ${deleteConfirm.type}`);
       }
@@ -517,6 +543,54 @@ export default function AdminDashboard() {
 
   const handleDeleteContact = async (contactId: string) => {
     setDeleteConfirm({ type: 'contact', id: contactId });
+  };
+
+  const fetchFeedbacks = async () => {
+    setFeedbacksLoading(true);
+    try {
+      const response = await fetch('http://localhost:3000/api/feedback', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setFeedbacks(data.data);
+      } else {
+        toast.error(data.message || 'Failed to load feedbacks');
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching feedbacks:", error);
+      toast.error('Error loading feedbacks');
+    } finally {
+      setFeedbacksLoading(false);
+    }
+  };
+
+  const handleUpdateFeedbackStatus = async (feedbackId: string, newStatus: string) => {
+    try {
+      const response = await fetch(`http://localhost:3000/api/feedback?id=${feedbackId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast.success('Feedback status updated');
+        fetchFeedbacks();
+        setEditingFeedback(null);
+      } else {
+        toast.error(data.message || 'Failed to update feedback');
+      }
+    } catch (error) {
+      console.error("[v0] Error updating feedback status:", error);
+      toast.error('Error updating feedback');
+    }
+  };
+
+  const handleDeleteFeedback = async (feedbackId: string) => {
+    setDeleteConfirm({ type: 'feedback', id: feedbackId });
   };
 
   // Calculate price with coupon discount
@@ -634,6 +708,9 @@ export default function AdminDashboard() {
         <Tabs defaultValue="appointments">
           <TabsList className="bg-secondary border border-border mb-6">
             <TabsTrigger value="appointments" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Appointments</TabsTrigger>
+            <TabsTrigger value="reviews" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Star className="w-4 h-4 mr-1" /> Reviews
+            </TabsTrigger>
             <TabsTrigger value="users" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Users className="w-4 h-4 mr-1" /> Users
             </TabsTrigger>
@@ -702,6 +779,71 @@ export default function AdminDashboard() {
                             <button onClick={() => setViewApt(apt)} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"><Eye className="w-4 h-4" /></button>
                             <button onClick={() => { setEditApt(apt); setEditStatus(apt.status); }} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"><Pencil className="w-4 h-4" /></button>
                             <button onClick={() => handleDeleteAppointment(apt._id || apt.id || '')} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Reviews Tab */}
+          <TabsContent value="reviews">
+            <div className="flex flex-col md:flex-row gap-4 mb-6">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input value={feedbackSearch} onChange={(e) => setFeedbackSearch(e.target.value)} placeholder="Search by name or email..." className="bg-secondary border-border text-foreground pl-10" />
+              </div>
+              <Select value={feedbackStatusFilter} onValueChange={setFeedbackStatusFilter}>
+                <SelectTrigger className="w-full md:w-48 bg-secondary border-border text-foreground">
+                  <Filter className="w-4 h-4 mr-2" /><SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-card border-border">
+                  {["all", "pending", "draft", "publish"].map((s) => <SelectItem key={s} value={s}>{s === "all" ? "All Status" : s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="bg-gradient-card border border-border rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border">
+                      {["Name", "Email", "Rating", "Title", "Status", "Date", "Actions"].map((h) => (
+                        <th key={h} className="text-left px-4 py-3 text-xs text-muted-foreground uppercase tracking-wider font-medium">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {feedbacksLoading ? (
+                      <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">Loading feedbacks...</td></tr>
+                    ) : feedbacks.length === 0 ? (
+                      <tr><td colSpan={7} className="text-center py-12 text-muted-foreground">No feedbacks found.</td></tr>
+                    ) : feedbacks.filter(f => (feedbackStatusFilter === "all" || f.status === feedbackStatusFilter) && (feedbackSearch === "" || f.name.toLowerCase().includes(feedbackSearch.toLowerCase()) || f.email.toLowerCase().includes(feedbackSearch.toLowerCase()))).map((feedback) => (
+                      <tr key={feedback._id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                        <td className="px-4 py-3"><div className="text-foreground font-medium">{feedback.name}</div></td>
+                        <td className="px-4 py-3"><div className="text-foreground text-sm">{feedback.email}</div></td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-0.5">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <Star key={i} className={`w-3 h-3 ${i < feedback.rating ? "fill-primary text-primary" : "text-muted-foreground/30"}`} />
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-foreground text-sm max-w-xs truncate">{feedback.title}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant="outline" className={`text-xs ${feedback.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' : feedback.status === 'draft' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>
+                            {feedback.status.charAt(0).toUpperCase() + feedback.status.slice(1)}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground text-sm">{new Date(feedback.createdAt).toLocaleDateString()}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setSelectedFeedback(feedback)} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"><Eye className="w-4 h-4" /></button>
+                            <button onClick={() => { setEditingFeedback(feedback); setEditFeedbackStatus(feedback.status); }} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"><Pencil className="w-4 h-4" /></button>
+                            <button onClick={() => handleDeleteFeedback(feedback._id)} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </td>
                       </tr>
@@ -1080,6 +1222,78 @@ export default function AdminDashboard() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingContact(null)} className="border-border text-muted-foreground">Cancel</Button>
             <Button onClick={() => editingContact && handleUpdateContactStatus(editingContact._id, editingContact.status)} className="bg-gradient-sky text-primary-foreground font-semibold hover:opacity-90">Update Status</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Feedback Dialog */}
+      <Dialog open={!!selectedFeedback} onOpenChange={() => setSelectedFeedback(null)}>
+        <DialogContent className="bg-card border-border text-foreground max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl">Feedback Details</DialogTitle>
+            <DialogDescription>View the complete feedback submission</DialogDescription>
+          </DialogHeader>
+          {selectedFeedback && (
+            <div className="space-y-4 text-sm">
+              <div><span className="text-muted-foreground">Name:</span> <span className="text-foreground font-medium">{selectedFeedback.name}</span></div>
+              <div><span className="text-muted-foreground">Email:</span> <span className="text-foreground font-medium">{selectedFeedback.email}</span></div>
+              <div>
+                <span className="text-muted-foreground">Rating:</span>
+                <div className="flex gap-0.5 mt-1">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} className={`w-4 h-4 ${i < selectedFeedback.rating ? "fill-primary text-primary" : "text-muted-foreground/30"}`} />
+                  ))}
+                </div>
+              </div>
+              <div><span className="text-muted-foreground">Title:</span> <span className="text-foreground font-medium">{selectedFeedback.title}</span></div>
+              <div><span className="text-muted-foreground">Status:</span> <span className="text-foreground font-medium">{selectedFeedback.status}</span></div>
+              <div className="pt-2 border-t border-border">
+                <span className="text-muted-foreground block mb-2">Feedback:</span>
+                <p className="text-foreground bg-secondary/50 rounded p-3 whitespace-pre-wrap">{selectedFeedback.feedback}</p>
+              </div>
+              <div><span className="text-muted-foreground">Submitted:</span> <span className="text-foreground font-medium">{new Date(selectedFeedback.createdAt).toLocaleString()}</span></div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedFeedback(null)} className="border-border text-muted-foreground">Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Feedback Status Dialog */}
+      <Dialog open={!!editingFeedback} onOpenChange={() => setEditingFeedback(null)}>
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl">Update Feedback Status</DialogTitle>
+            <DialogDescription>Change the publication status of this feedback</DialogDescription>
+          </DialogHeader>
+          {editingFeedback && (
+            <div className="space-y-4">
+              <div><Label className="text-foreground">From:</Label><Input value={editingFeedback.name} disabled className="bg-secondary border-border text-muted-foreground mt-1" /></div>
+              <div>
+                <Label className="text-foreground">Rating</Label>
+                <div className="flex gap-0.5 mt-2">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star key={i} className={`w-4 h-4 ${i < editingFeedback.rating ? "fill-primary text-primary" : "text-muted-foreground/30"}`} />
+                  ))}
+                </div>
+              </div>
+              <div><Label className="text-foreground">Current Status</Label>
+                <div className="mt-1 p-2 bg-secondary rounded border border-border text-foreground">{editingFeedback.status}</div>
+              </div>
+              <div><Label className="text-foreground">New Status</Label>
+                <Select value={editFeedbackStatus} onValueChange={setEditFeedbackStatus}>
+                  <SelectTrigger className="bg-secondary border-border text-foreground mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-card border-border">
+                    {["pending", "draft", "publish"].map((s) => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingFeedback(null)} className="border-border text-muted-foreground">Cancel</Button>
+            <Button onClick={() => editingFeedback && handleUpdateFeedbackStatus(editingFeedback._id, editFeedbackStatus)} className="bg-gradient-sky text-primary-foreground font-semibold hover:opacity-90">Update Status</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Star, Quote, ArrowRight, ThumbsUp, MessageSquare, Users } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -37,7 +38,47 @@ function Stars({ count }: { count: number }) {
   );
 }
 
+interface PublishedFeedback {
+  _id: string;
+  name: string;
+  email: string;
+  rating: number;
+  title: string;
+  feedback: string;
+  status: 'publish';
+  createdAt: string;
+}
+
 export default function ReviewsPage() {
+  const [publishedFeedback, setPublishedFeedback] = useState<PublishedFeedback[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPublishedFeedback = async () => {
+      try {
+        const response = await fetch('http://localhost:3000/api/feedback?published=true');
+        const data = await response.json();
+        if (data.success) {
+          setPublishedFeedback(data.data || []);
+        }
+      } catch (error) {
+        console.error("[v0] Error fetching published feedback:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPublishedFeedback();
+  }, []);
+
+  // Combine hardcoded reviews with published feedback
+  const allReviews = [...reviews, ...publishedFeedback.map(fb => ({
+    name: fb.name,
+    rating: fb.rating,
+    text: fb.feedback,
+    avatar: fb.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+  }))];
+
   return (
     <>
       <PageHero
@@ -77,7 +118,7 @@ export default function ReviewsPage() {
       <section className="py-12 lg:py-20">
         <div className="container mx-auto px-4 lg:px-8">
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6">
-            {reviews.map((review, i) => (
+            {allReviews.map((review, i) => (
               <motion.div
                 key={review.name}
                 initial={{ opacity: 0, y: 30 }}
