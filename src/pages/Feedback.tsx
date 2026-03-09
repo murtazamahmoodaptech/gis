@@ -17,6 +17,8 @@ export default function FeedbackPage() {
   const [dialogMessage, setDialogMessage] = useState("");
   const [hoveredRating, setHoveredRating] = useState(0);
 
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.email || form.rating === 0 || !form.title || !form.feedback) {
@@ -26,7 +28,7 @@ export default function FeedbackPage() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(`http://localhost:3000/api/feedback`, {
+      const response = await fetch(`${API_BASE_URL}/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
