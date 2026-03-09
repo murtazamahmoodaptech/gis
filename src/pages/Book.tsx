@@ -53,9 +53,8 @@ export default function BookPage() {
   useEffect(() => {
     const storedCode = localStorage.getItem("discount_code");
     if (storedCode) {
+      // Don't remove immediately - keep it for next visit
       validateCoupon(storedCode);
-      localStorage.removeItem("discount_code");
-      localStorage.removeItem("discount_percentage");
     }
   }, []);
 

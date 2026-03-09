@@ -112,38 +112,60 @@ export default function HomePage() {
     <>
       {/* Coupon Modal */}
       <Dialog open={showCouponModal} onOpenChange={setShowCouponModal}>
-        <DialogContent className="bg-card border-border text-foreground max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl">🎉 Special Offer</DialogTitle>
-            <DialogDescription>Have a coupon code? Enter it here for exclusive discounts!</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
+        <DialogContent className="bg-gradient-card border-2 border-primary/50 text-foreground max-w-lg">
+          <button onClick={handleCloseModal} className="absolute right-4 top-4 text-muted-foreground hover:text-foreground transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+          <div className="text-center space-y-3 pt-2">
+            <div className="text-4xl">✨</div>
+            <DialogTitle className="font-display text-3xl bg-gradient-to-r from-primary via-primary/70 to-primary bg-clip-text text-transparent">Unlock Your Exclusive Discount</DialogTitle>
+            <p className="text-muted-foreground text-sm max-w-xs mx-auto">Have a coupon code? Enter it below and get instant savings on our services!</p>
+          </div>
+
+          <div className="space-y-3 py-6">
             <div>
-              <Label className="text-foreground">Coupon Code</Label>
+              <Label className="text-foreground font-semibold block mb-2">Enter Your Coupon Code</Label>
               <Input
                 type="text"
                 value={couponCode}
                 onChange={(e) => validateCoupon(e.target.value)}
-                placeholder="Enter your code (e.g., FIRST10)"
-                className="bg-secondary border-border text-foreground uppercase mt-2"
+                placeholder="e.g., FIRST10"
+                className="bg-secondary border-2 border-border text-foreground text-center text-lg font-semibold uppercase placeholder:text-muted-foreground/50 py-6"
+                autoFocus
               />
+              <p className="text-xs text-muted-foreground mt-2 text-center">Codes are case-insensitive</p>
             </div>
-            {couponError && <p className="text-red-400 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {couponError}</p>}
+
+            {couponError && (
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <p className="text-red-400 text-sm">{couponError}</p>
+              </div>
+            )}
+
             {couponValid && (
-              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                <p className="font-semibold text-emerald-400">{couponCode} Applied!</p>
-                <p className="text-sm text-muted-foreground">{couponDiscount}% discount on all services</p>
+              <div className="p-4 rounded-lg bg-emerald-500/15 border-2 border-emerald-500/50 space-y-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-emerald-400">{couponCode}</p>
+                  <p className="text-xl font-bold text-emerald-400">{couponDiscount}% OFF</p>
+                </div>
+                <p className="text-sm text-emerald-300/80">Discount applied to all services!</p>
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCloseModal} className="border-border text-muted-foreground">
-              {couponValid ? "Continue Shopping" : "Skip"}
+
+          <DialogFooter className="flex gap-2 pt-4 border-t border-border">
+            <Button 
+              variant="outline" 
+              onClick={handleCloseModal} 
+              className="flex-1 border-border text-muted-foreground hover:bg-secondary"
+            >
+              {couponValid ? "Continue" : "Skip for Now"}
             </Button>
             {couponValid && (
-              <Link to="/book">
-                <Button className="bg-gradient-sky text-primary-foreground font-semibold">
-                  Book Now & Save
+              <Link to="/book" className="flex-1">
+                <Button className="w-full bg-gradient-to-r from-primary to-primary/80 text-primary-foreground font-semibold hover:shadow-lg transition-all">
+                  Book Now & Save {couponDiscount}%
                 </Button>
               </Link>
             )}
