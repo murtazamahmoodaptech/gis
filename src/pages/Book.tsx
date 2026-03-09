@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { CalendarIcon, Car, Trash2, ShoppingCart, CheckCircle, AlertCircle, X } from "lucide-react";
+import { CalendarIcon, Car, Trash2, ShoppingCart, CheckCircle, AlertCircle, X, Check, Tag } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,12 +15,22 @@ import { TIME_SLOTS } from "@/data/pricing";
 import { useCart } from "@/contexts/CartContext";
 import heroBook from "@/assets/hero-book.jpg";
 
+interface Coupon {
+  _id: string;
+  code: string;
+  discountPercentage: number;
+  expiryDate: string;
+}
+
 export default function BookPage() {
   const { items, removeItem, clearCart, total: cartTotal } = useCart();
   const [isLoading, setIsLoading] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [dialogType, setDialogType] = useState<'success' | 'error'>('success');
   const [dialogMessage, setDialogMessage] = useState("");
+  const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([]);
+  const [selectedCoupons, setSelectedCoupons] = useState<string[]>([]);
+  const [couponsLoading, setCouponsLoading] = useState(true);
 
   const [form, setForm] = useState({
      fullName: "",
@@ -39,12 +49,38 @@ export default function BookPage() {
 
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
 
-  const savedPromo = localStorage.getItem("promo_code");
-  const promoCode = form.promoCode.trim().toUpperCase() || savedPromo || "";
-  const hasDiscount = promoCode === "FIRST10";
+  // Fetch available coupons on mount
+  useEffect(() => {
+    const fetchCoupons = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/coupons?active=true`);
+        const data = await response.json();
+        if (data.success) {
+          setAvailableCoupons(data.data || []);
+        }
+      } catch (error) {
+        console.error("[v0] Error fetching coupons:", error);
+      } finally {
+        setCouponsLoading(false);
+      }
+    };
+    fetchCoupons();
+  }, []);
 
-  const discount = hasDiscount ? cartTotal * 0.1 : 0;
-  const finalTotal = cartTotal - discount;
+  // Calculate discount from selected coupons
+  const calculateDiscount = () => {
+    let totalDiscount = 0;
+    selectedCoupons.forEach(couponCode => {
+      const coupon = availableCoupons.find(c => c.code === couponCode);
+      if (coupon) {
+        totalDiscount += (cartTotal * coupon.discountPercentage) / 100;
+      }
+    });
+    return totalDiscount;
+  };
+
+  const discount = calculateDiscount();
+  const finalTotal = Math.max(0, cartTotal - discount);
 
   const update = (field: string, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -62,6 +98,21 @@ export default function BookPage() {
     setIsLoading(true);
     try {
       const serviceType = items.map(item => item.serviceType).join(", ");
+      
+      // Build coupons array with discount details
+      const couponsArray = selectedCoupons.map(couponCode => {
+        const coupon = availableCoupons.find(c => c.code === couponCode);
+        if (coupon) {
+          const discountAmount = (cartTotal * coupon.discountPercentage) / 100;
+          return {
+            code: coupon.code,
+            discountPercentage: coupon.discountPercentage,
+            discountAmount: discountAmount,
+          };
+        }
+        return null;
+      }).filter(Boolean);
+
       const response = await fetch(`${API_BASE_URL}/appointments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -78,8 +129,10 @@ export default function BookPage() {
           vehicleCategory: items[0]?.vehicleCategory || "Car",
           date: date?.toISOString().split('T')[0],
           timeSlot: form.timeSlot,
-          promoCode: promoCode,
-          discountApplied: hasDiscount,
+          basePrice: cartTotal,
+          coupons: couponsArray,
+          totalDiscount: discount,
+          discountApplied: selectedCoupons.length > 0,
           totalPrice: finalTotal,
           status: "Pending",
         }),
@@ -98,6 +151,7 @@ export default function BookPage() {
       setDialogMessage("Appointment request submitted! We'll confirm your booking shortly.");
       setShowDialog(true);
       clearCart();
+      setSelectedCoupons([]);
       setForm({
         fullName: "",
         phone: "",
@@ -208,14 +262,65 @@ export default function BookPage() {
             {/* Promo & Pricing */}
             {items.length > 0 && (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="bg-gradient-card border border-primary/30 rounded-xl p-6 lg:p-8 space-y-4 card-hover">
-                <h3 className="font-display text-xl font-bold text-foreground">Promo & Total</h3>
-                <div><Label className="text-foreground">Promo Code</Label><Input value={form.promoCode || savedPromo || ""} onChange={(e) => update("promoCode", e.target.value)} placeholder="Enter promo code" className="bg-secondary border-border text-foreground mt-1" /></div>
+                <h3 className="font-display text-xl font-bold text-foreground flex items-center gap-2"><Tag className="w-5 h-5 text-primary" /> Apply Coupons</h3>
+                
+                {/* Available Coupons */}
+                {couponsLoading ? (
+                  <p className="text-muted-foreground text-sm">Loading available coupons...</p>
+                ) : availableCoupons.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No active coupons available</p>
+                ) : (
+                  <div className="space-y-2">
+                    {availableCoupons.map((coupon) => (
+                      <label key={coupon._id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border/50 hover:border-primary/50 cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={selectedCoupons.includes(coupon.code)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCoupons([...selectedCoupons, coupon.code]);
+                            } else {
+                              setSelectedCoupons(selectedCoupons.filter(c => c !== coupon.code));
+                            }
+                          }}
+                          className="w-4 h-4 rounded cursor-pointer"
+                        />
+                        <div className="flex-1">
+                          <div className="font-semibold text-foreground">{coupon.code}</div>
+                          <div className="text-xs text-muted-foreground">{coupon.discountPercentage}% off • Expires {new Date(coupon.expiryDate).toLocaleDateString()}</div>
+                        </div>
+                        <div className="text-sm font-bold text-primary">-${((cartTotal * coupon.discountPercentage) / 100).toFixed(2)}</div>
+                        {selectedCoupons.includes(coupon.code) && <Check className="w-5 h-5 text-primary" />}
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {/* Price Breakdown */}
                 <div className="border-t border-border pt-4 space-y-2">
                   {items.map((item) => (
                     <div key={item.id} className="flex justify-between text-sm"><span className="text-muted-foreground">{item.serviceType} ({item.vehicleCategory})</span><span className="text-foreground">${item.price.toFixed(2)}</span></div>
                   ))}
                   <div className="flex justify-between text-sm border-t border-border pt-2"><span className="text-muted-foreground">Subtotal</span><span className="text-foreground">${cartTotal.toFixed(2)}</span></div>
-                  {hasDiscount && <div className="flex justify-between text-sm"><span className="text-primary">Discount (10%)</span><span className="text-primary">-${discount.toFixed(2)}</span></div>}
+                  
+                  {/* Show each coupon discount */}
+                  {selectedCoupons.length > 0 && (
+                    <>
+                      {selectedCoupons.map((couponCode) => {
+                        const coupon = availableCoupons.find(c => c.code === couponCode);
+                        if (!coupon) return null;
+                        const discountAmount = (cartTotal * coupon.discountPercentage) / 100;
+                        return (
+                          <div key={couponCode} className="flex justify-between text-sm">
+                            <span className="text-primary">{coupon.code} ({coupon.discountPercentage}%)</span>
+                            <span className="text-primary">-${discountAmount.toFixed(2)}</span>
+                          </div>
+                        );
+                      })}
+                      <div className="flex justify-between text-sm"><span className="text-primary font-semibold">Total Discount</span><span className="text-primary font-semibold">-${discount.toFixed(2)}</span></div>
+                    </>
+                  )}
+                  
                   <div className="flex justify-between text-lg font-bold border-t border-border pt-2"><span className="text-foreground">Total</span><span className="text-gradient-sky">${finalTotal.toFixed(2)}</span></div>
                 </div>
               </motion.div>

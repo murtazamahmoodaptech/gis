@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { connectDB } from '../backend/config/database.ts';
 import { Appointment } from '../backend/models/Appointment.ts';
+import { Coupon } from '../backend/models/Coupon.ts';
 import { sendEmail, getBookingConfirmationEmail, getAdminNotificationEmail } from '../backend/services/emailService.ts';
 
 export default async function handler(
@@ -28,11 +29,56 @@ export default async function handler(
         });
       }
 
-      const appointment = new Appointment(appointmentData);
+      // Validate and process coupons if provided
+      let processedCoupons: any[] = [];
+      let totalDiscount = 0;
+      let finalPrice = appointmentData.basePrice || appointmentData.totalPrice;
+
+      if (appointmentData.coupons && Array.isArray(appointmentData.coupons) && appointmentData.coupons.length > 0) {
+        const now = new Date();
+        const basePrice = appointmentData.basePrice || appointmentData.totalPrice;
+
+        for (const couponData of appointmentData.coupons) {
+          // Find the coupon in database
+          const coupon = await Coupon.findOne({ 
+            code: couponData.code,
+            isActive: true,
+            expiryDate: { $gt: now }
+          });
+
+          if (coupon) {
+            // Calculate discount for this coupon
+            const discountAmount = (basePrice * coupon.discountPercentage) / 100;
+            totalDiscount += discountAmount;
+
+            processedCoupons.push({
+              code: coupon.code,
+              discountPercentage: coupon.discountPercentage,
+              discountAmount: discountAmount,
+            });
+          }
+        }
+
+        // Calculate final price after all discounts
+        finalPrice = Math.max(0, basePrice - totalDiscount);
+      }
+
+      // Ensure basePrice is set
+      const appointmentToSave = {
+        ...appointmentData,
+        basePrice: appointmentData.basePrice || appointmentData.totalPrice,
+        coupons: processedCoupons,
+        totalDiscount: totalDiscount,
+        totalPrice: finalPrice,
+        discountApplied: processedCoupons.length > 0,
+      };
+
+      const appointment = new Appointment(appointmentToSave);
       await appointment.save();
 
       // Send confirmation email to customer
       try {
+        const couponCodes = processedCoupons.map(c => c.code).join(', ');
         await sendEmail({
           to: appointmentData.email,
           subject: 'Luxe Detail Booker - Appointment Confirmation',
@@ -41,8 +87,11 @@ export default async function handler(
             serviceType: appointmentData.serviceType,
             date: appointmentData.date,
             timeSlot: appointmentData.timeSlot,
-            totalPrice: appointmentData.totalPrice,
-          }),
+            totalPrice: finalPrice,
+            basePrice: appointmentToSave.basePrice,
+            discount: totalDiscount,
+            coupons: couponCodes || 'None',
+          } as any),
         });
 
         // Send admin notification
@@ -57,8 +106,11 @@ export default async function handler(
             date: appointmentData.date,
             timeSlot: appointmentData.timeSlot,
             vehicleName: appointmentData.vehicleName,
-            totalPrice: appointmentData.totalPrice,
-          }),
+            totalPrice: finalPrice,
+            basePrice: appointmentToSave.basePrice,
+            discount: totalDiscount,
+            coupons: couponCodes || 'None',
+          } as any),
         });
       } catch (emailError) {
         console.error('Email sending error:', emailError);

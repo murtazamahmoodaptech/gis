@@ -17,7 +17,24 @@ export default async function handler(
   await connectDB();
 
   try {
-    // Verify authentication
+    /* ===========================
+       GET - List all active coupons (public endpoint)
+       Query: ?active=true to get only valid/active coupons
+    ============================ */
+    if (req.method === 'GET' && req.query.active === 'true') {
+      const now = new Date();
+      const activeCoupons = await Coupon.find({
+        isActive: true,
+        expiryDate: { $gt: now }
+      }).select('code discountPercentage expiryDate').sort({ createdAt: -1 });
+
+      return res.status(200).json({
+        success: true,
+        data: activeCoupons,
+      });
+    }
+
+    // Verify authentication for admin operations
     const user = await getTokenFromRequest(req);
     if (!user) {
       return res.status(401).json({
@@ -35,7 +52,7 @@ export default async function handler(
     }
 
     /* ===========================
-       GET - List all coupons
+       GET - List all coupons (admin only)
     ============================ */
     if (req.method === 'GET') {
       const { search, status } = req.query;

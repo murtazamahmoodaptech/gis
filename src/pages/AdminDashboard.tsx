@@ -128,6 +128,11 @@ export default function AdminDashboard() {
   const [editFeedbackStatus, setEditFeedbackStatus] = useState("");
   const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
 
+  // Appointment coupons state
+  const [availableCouponsForApt, setAvailableCouponsForApt] = useState<any[]>([]);
+  const [selectedCouponsForApt, setSelectedCouponsForApt] = useState<string[]>([]);
+  const [loadingCouponsForApt, setLoadingCouponsForApt] = useState(false);
+
   // Delete confirmation state
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'appointment' | 'user' | 'coupon' | 'contact' | 'feedback' | null; id: string }>({ type: null, id: '' });
   const [isDeleting, setIsDeleting] = useState(false);
@@ -593,6 +598,21 @@ export default function AdminDashboard() {
     setDeleteConfirm({ type: 'feedback', id: feedbackId });
   };
 
+  const fetchAvailableCouponsForApt = async () => {
+    setLoadingCouponsForApt(true);
+    try {
+      const response = await fetch('http://localhost:3000/api/coupons?active=true');
+      const data = await response.json();
+      if (data.success) {
+        setAvailableCouponsForApt(data.data || []);
+      }
+    } catch (error) {
+      console.error("[v0] Error fetching coupons for appointment:", error);
+    } finally {
+      setLoadingCouponsForApt(false);
+    }
+  };
+
   // Calculate price with coupon discount
   const calculatePrice = (originalPrice: number, discountPercentage: number = 0) => {
     if (discountPercentage <= 0) return originalPrice;
@@ -777,7 +797,7 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             <button onClick={() => setViewApt(apt)} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"><Eye className="w-4 h-4" /></button>
-                            <button onClick={() => { setEditApt(apt); setEditStatus(apt.status); }} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"><Pencil className="w-4 h-4" /></button>
+                            <button onClick={() => { setEditApt(apt); setEditStatus(apt.status); setSelectedCouponsForApt([]); fetchAvailableCouponsForApt(); }} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"><Pencil className="w-4 h-4" /></button>
                             <button onClick={() => handleDeleteAppointment(apt._id || apt.id || '')} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                           </div>
                         </td>
@@ -1050,14 +1070,14 @@ export default function AdminDashboard() {
       </Dialog>
 
       {/* Edit Dialog */}
-      <Dialog open={!!editApt} onOpenChange={() => setEditApt(null)}>
-        <DialogContent className="bg-card border-border text-foreground max-w-md">
+      <Dialog open={!!editApt} onOpenChange={() => { setEditApt(null); setSelectedCouponsForApt([]); }}>
+        <DialogContent className="bg-card border-border text-foreground max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-display text-xl">Edit Appointment</DialogTitle>
-            <DialogDescription>Update the appointment status</DialogDescription>
+            <DialogDescription>Update the appointment status and apply coupons</DialogDescription>
           </DialogHeader>
           {editApt && (
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-96 overflow-y-auto">
               <div><Label className="text-foreground">Customer</Label><Input value={editApt.fullName} disabled className="bg-secondary border-border text-muted-foreground mt-1" /></div>
               <div><Label className="text-foreground">Status</Label>
                 <Select value={editStatus} onValueChange={setEditStatus}>
@@ -1065,10 +1085,44 @@ export default function AdminDashboard() {
                   <SelectContent className="bg-card border-border">{["Pending", "Confirmed", "Completed", "Cancelled"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
+
+              {/* Coupons Section */}
+              <div className="border-t border-border pt-4">
+                <Label className="text-foreground font-semibold mb-2 block">Apply Coupons</Label>
+                {loadingCouponsForApt ? (
+                  <p className="text-muted-foreground text-sm">Loading coupons...</p>
+                ) : availableCouponsForApt.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No active coupons available</p>
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {availableCouponsForApt.map((coupon) => (
+                      <label key={coupon._id} className="flex items-center gap-3 p-2 rounded bg-secondary/50 border border-border/50 hover:border-primary/50 cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={selectedCouponsForApt.includes(coupon.code)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedCouponsForApt([...selectedCouponsForApt, coupon.code]);
+                            } else {
+                              setSelectedCouponsForApt(selectedCouponsForApt.filter(c => c !== coupon.code));
+                            }
+                          }}
+                          className="w-4 h-4 rounded cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-foreground text-sm">{coupon.code}</div>
+                          <div className="text-xs text-muted-foreground">{coupon.discountPercentage}% off</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditApt(null)} className="border-border text-muted-foreground">Cancel</Button>
+            <Button variant="outline" onClick={() => { setEditApt(null); setSelectedCouponsForApt([]); }} className="border-border text-muted-foreground">Cancel</Button>
+            <Button onClick={() => { fetchAvailableCouponsForApt(); }} className="text-sm bg-secondary border-border text-muted-foreground hover:bg-secondary/80">Refresh Coupons</Button>
             <Button onClick={() => handleUpdateAppointment(editApt._id || editApt.id || '')} className="bg-gradient-sky text-primary-foreground font-semibold hover:opacity-90">Save Changes</Button>
           </DialogFooter>
         </DialogContent>

@@ -1,5 +1,11 @@
 import mongoose from 'mongoose';
 
+export interface CouponDetail {
+  code: string;
+  discountPercentage: number;
+  discountAmount: number;
+}
+
 export interface IAppointment extends mongoose.Document {
   fullName: string;
   phone: string;
@@ -13,7 +19,10 @@ export interface IAppointment extends mongoose.Document {
   vehicleCategory: string;
   date: string;
   timeSlot: string;
-  promoCode: string;
+  promoCode?: string; // Keep for backward compatibility
+  coupons: CouponDetail[];
+  basePrice: number;
+  totalDiscount: number;
   discountApplied: boolean;
   totalPrice: number;
   status: 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled';
@@ -75,6 +84,30 @@ const appointmentSchema = new mongoose.Schema<IAppointment>(
     promoCode: {
       type: String,
       default: '',
+    },
+    coupons: [
+      {
+        code: {
+          type: String,
+          required: true,
+        },
+        discountPercentage: {
+          type: Number,
+          required: true,
+        },
+        discountAmount: {
+          type: Number,
+          required: true,
+        },
+      },
+    ],
+    basePrice: {
+      type: Number,
+      required: [true, 'Base price is required'],
+    },
+    totalDiscount: {
+      type: Number,
+      default: 0,
     },
     discountApplied: {
       type: Boolean,
