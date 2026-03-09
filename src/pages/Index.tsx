@@ -1,8 +1,15 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Shield, Clock, Award, Star, ChevronRight, CheckCircle, Sparkles, Droplets, Gem, Wrench, ThumbsUp } from "lucide-react";
+import { ArrowRight, Shield, Clock, Award, Star, ChevronRight, CheckCircle, Sparkles, Droplets, Gem, Wrench, ThumbsUp, X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
+} from "@/components/ui/dialog";
 import SectionHeading from "@/components/SectionHeading";
+import { toast } from "sonner";
 import heroVideo from "@/assets/hero-video.mp4";
 import heroImage from "@/assets/hero-car.jpg";
 import interiorImg from "@/assets/detail-interior.jpg";
@@ -50,8 +57,100 @@ const additionalBenefits = [
 ];
 
 export default function HomePage() {
+  const [showCouponModal, setShowCouponModal] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponError, setCouponError] = useState("");
+  const [couponValid, setCouponValid] = useState(false);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+
+  // Show coupon popup on page load
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowCouponModal(true);
+    }, 2000); // Show after 2 seconds
+    return () => clearTimeout(timer);
+  }, []);
+
+  const validateCoupon = async (code: string) => {
+    setCouponCode(code.toUpperCase());
+    setCouponError("");
+    setCouponValid(false);
+    setCouponDiscount(0);
+
+    if (!code.trim()) return;
+
+    try {
+      const response = await fetch("http://localhost:3000/api/coupons?active=true");
+      const data = await response.json();
+      
+      if (data.success && Array.isArray(data.data)) {
+        const found = data.data.find((c: any) => c.code === code.toUpperCase());
+        if (found) {
+          setCouponValid(true);
+          setCouponDiscount(found.discountPercentage);
+          setCouponError("");
+          // Store in localStorage for use on booking page
+          localStorage.setItem("discount_code", found.code);
+          localStorage.setItem("discount_percentage", found.discountPercentage.toString());
+          toast.success(`${found.code} applied! ${found.discountPercentage}% discount`);
+        } else {
+          setCouponError("Invalid or expired coupon code");
+          setCouponValid(false);
+        }
+      }
+    } catch (error) {
+      console.error("[v0] Error validating coupon:", error);
+      setCouponError("Error validating coupon");
+    }
+  };
+
+  const handleCloseModal = () => {
+    setShowCouponModal(false);
+  };
+
   return (
     <>
+      {/* Coupon Modal */}
+      <Dialog open={showCouponModal} onOpenChange={setShowCouponModal}>
+        <DialogContent className="bg-card border-border text-foreground max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">🎉 Special Offer</DialogTitle>
+            <DialogDescription>Have a coupon code? Enter it here for exclusive discounts!</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-foreground">Coupon Code</Label>
+              <Input
+                type="text"
+                value={couponCode}
+                onChange={(e) => validateCoupon(e.target.value)}
+                placeholder="Enter your code (e.g., FIRST10)"
+                className="bg-secondary border-border text-foreground uppercase mt-2"
+              />
+            </div>
+            {couponError && <p className="text-red-400 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {couponError}</p>}
+            {couponValid && (
+              <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <p className="font-semibold text-emerald-400">{couponCode} Applied!</p>
+                <p className="text-sm text-muted-foreground">{couponDiscount}% discount on all services</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseModal} className="border-border text-muted-foreground">
+              {couponValid ? "Continue Shopping" : "Skip"}
+            </Button>
+            {couponValid && (
+              <Link to="/book">
+                <Button className="bg-gradient-sky text-primary-foreground font-semibold">
+                  Book Now & Save
+                </Button>
+              </Link>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Hero with Video */}
       <section className="relative min-h-[85vh] sm:min-h-[90vh] flex items-center overflow-hidden">
         <div className="absolute inset-0">

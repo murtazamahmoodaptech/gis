@@ -28,9 +28,9 @@ export default function BookPage() {
   const [showDialog, setShowDialog] = useState(false);
   const [dialogType, setDialogType] = useState<'success' | 'error'>('success');
   const [dialogMessage, setDialogMessage] = useState("");
-  const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([]);
-  const [selectedCoupons, setSelectedCoupons] = useState<string[]>([]);
-  const [couponsLoading, setCouponsLoading] = useState(true);
+  const [couponCode, setCouponCode] = useState("");
+  const [validatedCoupon, setValidatedCoupon] = useState<Coupon | null>(null);
+  const [couponError, setCouponError] = useState("");
 
   const [form, setForm] = useState({
      fullName: "",
@@ -49,37 +49,60 @@ export default function BookPage() {
 
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
 
-  // Fetch available coupons on mount
+  // Check for stored coupon from popup on mount
   useEffect(() => {
-    const fetchCoupons = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/coupons?active=true`);
-        const data = await response.json();
-        if (data.success) {
-          setAvailableCoupons(data.data || []);
-        }
-      } catch (error) {
-        console.error("[v0] Error fetching coupons:", error);
-      } finally {
-        setCouponsLoading(false);
-      }
-    };
-    fetchCoupons();
+    const storedCode = localStorage.getItem("discount_code");
+    if (storedCode) {
+      validateCoupon(storedCode);
+      localStorage.removeItem("discount_code");
+      localStorage.removeItem("discount_percentage");
+    }
   }, []);
 
-  // Calculate discount from selected coupons
-  const calculateDiscount = () => {
-    let totalDiscount = 0;
-    selectedCoupons.forEach(couponCode => {
-      const coupon = availableCoupons.find(c => c.code === couponCode);
-      if (coupon) {
-        totalDiscount += (cartTotal * coupon.discountPercentage) / 100;
+  // Validate coupon code when user enters it
+  const validateCoupon = async (code: string) => {
+    setCouponCode(code.toUpperCase());
+    setCouponError("");
+    setValidatedCoupon(null);
+
+    if (!code.trim()) return;
+
+    const upperCode = code.toUpperCase();
+
+    // Check for hardcoded FIRST10 legacy code
+    if (upperCode === "FIRST10") {
+      setValidatedCoupon({
+        _id: "legacy",
+        code: "FIRST10",
+        discountPercentage: 10,
+        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 1 year from now
+      });
+      setCouponError("");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/coupons?active=true`);
+      const data = await response.json();
+      
+      if (data.success && Array.isArray(data.data)) {
+        const found = data.data.find((c: any) => c.code === upperCode);
+        if (found) {
+          setValidatedCoupon(found);
+          setCouponError("");
+        } else {
+          setCouponError("Invalid or expired coupon code");
+          setValidatedCoupon(null);
+        }
       }
-    });
-    return totalDiscount;
+    } catch (error) {
+      console.error("[v0] Error validating coupon:", error);
+      setCouponError("Error validating coupon code");
+    }
   };
 
-  const discount = calculateDiscount();
+  // Calculate discount from validated coupon
+  const discount = validatedCoupon ? (cartTotal * validatedCoupon.discountPercentage) / 100 : 0;
   const finalTotal = Math.max(0, cartTotal - discount);
 
   const update = (field: string, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
@@ -100,18 +123,13 @@ export default function BookPage() {
       const serviceType = items.map(item => item.serviceType).join(", ");
       
       // Build coupons array with discount details
-      const couponsArray = selectedCoupons.map(couponCode => {
-        const coupon = availableCoupons.find(c => c.code === couponCode);
-        if (coupon) {
-          const discountAmount = (cartTotal * coupon.discountPercentage) / 100;
-          return {
-            code: coupon.code,
-            discountPercentage: coupon.discountPercentage,
-            discountAmount: discountAmount,
-          };
+      const couponsArray = validatedCoupon ? [
+        {
+          code: validatedCoupon.code,
+          discountPercentage: validatedCoupon.discountPercentage,
+          discountAmount: discount,
         }
-        return null;
-      }).filter(Boolean);
+      ] : [];
 
       const response = await fetch(`${API_BASE_URL}/appointments`, {
         method: "POST",
@@ -132,7 +150,7 @@ export default function BookPage() {
           basePrice: cartTotal,
           coupons: couponsArray,
           totalDiscount: discount,
-          discountApplied: selectedCoupons.length > 0,
+          discountApplied: validatedCoupon !== null,
           totalPrice: finalTotal,
           status: "Pending",
         }),
@@ -151,7 +169,9 @@ export default function BookPage() {
       setDialogMessage("Appointment request submitted! We'll confirm your booking shortly.");
       setShowDialog(true);
       clearCart();
-      setSelectedCoupons([]);
+      setCouponCode("");
+      setValidatedCoupon(null);
+      setCouponError("");
       setForm({
         fullName: "",
         phone: "",
@@ -262,39 +282,29 @@ export default function BookPage() {
             {/* Promo & Pricing */}
             {items.length > 0 && (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="bg-gradient-card border border-primary/30 rounded-xl p-6 lg:p-8 space-y-4 card-hover">
-                <h3 className="font-display text-xl font-bold text-foreground flex items-center gap-2"><Tag className="w-5 h-5 text-primary" /> Apply Coupons</h3>
+                <h3 className="font-display text-xl font-bold text-foreground flex items-center gap-2"><Tag className="w-5 h-5 text-primary" /> Apply Coupon Code</h3>
                 
-                {/* Available Coupons */}
-                {couponsLoading ? (
-                  <p className="text-muted-foreground text-sm">Loading available coupons...</p>
-                ) : availableCoupons.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No active coupons available</p>
-                ) : (
-                  <div className="space-y-2">
-                    {availableCoupons.map((coupon) => (
-                      <label key={coupon._id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border/50 hover:border-primary/50 cursor-pointer transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={selectedCoupons.includes(coupon.code)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedCoupons([...selectedCoupons, coupon.code]);
-                            } else {
-                              setSelectedCoupons(selectedCoupons.filter(c => c !== coupon.code));
-                            }
-                          }}
-                          className="w-4 h-4 rounded cursor-pointer"
-                        />
-                        <div className="flex-1">
-                          <div className="font-semibold text-foreground">{coupon.code}</div>
-                          <div className="text-xs text-muted-foreground">{coupon.discountPercentage}% off • Expires {new Date(coupon.expiryDate).toLocaleDateString()}</div>
-                        </div>
-                        <div className="text-sm font-bold text-primary">-${((cartTotal * coupon.discountPercentage) / 100).toFixed(2)}</div>
-                        {selectedCoupons.includes(coupon.code) && <Check className="w-5 h-5 text-primary" />}
-                      </label>
-                    ))}
-                  </div>
-                )}
+                {/* Coupon Input */}
+                <div className="space-y-2">
+                  <Label className="text-foreground">Enter Coupon Code</Label>
+                  <Input
+                    type="text"
+                    value={couponCode}
+                    onChange={(e) => validateCoupon(e.target.value)}
+                    placeholder="Enter your coupon code"
+                    className="bg-secondary border-border text-foreground uppercase"
+                  />
+                  {couponError && <p className="text-red-400 text-sm flex items-center gap-1"><AlertCircle className="w-4 h-4" /> {couponError}</p>}
+                  {validatedCoupon && (
+                    <div className="p-3 rounded-lg bg-primary/10 border border-primary/30 flex items-center gap-2">
+                      <CheckCircle className="w-5 h-5 text-primary" />
+                      <div>
+                        <p className="font-semibold text-primary">{validatedCoupon.code} Applied</p>
+                        <p className="text-sm text-muted-foreground">{validatedCoupon.discountPercentage}% discount</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Price Breakdown */}
                 <div className="border-t border-border pt-4 space-y-2">
@@ -303,22 +313,12 @@ export default function BookPage() {
                   ))}
                   <div className="flex justify-between text-sm border-t border-border pt-2"><span className="text-muted-foreground">Subtotal</span><span className="text-foreground">${cartTotal.toFixed(2)}</span></div>
                   
-                  {/* Show each coupon discount */}
-                  {selectedCoupons.length > 0 && (
-                    <>
-                      {selectedCoupons.map((couponCode) => {
-                        const coupon = availableCoupons.find(c => c.code === couponCode);
-                        if (!coupon) return null;
-                        const discountAmount = (cartTotal * coupon.discountPercentage) / 100;
-                        return (
-                          <div key={couponCode} className="flex justify-between text-sm">
-                            <span className="text-primary">{coupon.code} ({coupon.discountPercentage}%)</span>
-                            <span className="text-primary">-${discountAmount.toFixed(2)}</span>
-                          </div>
-                        );
-                      })}
-                      <div className="flex justify-between text-sm"><span className="text-primary font-semibold">Total Discount</span><span className="text-primary font-semibold">-${discount.toFixed(2)}</span></div>
-                    </>
+                  {/* Show coupon discount if applied */}
+                  {validatedCoupon && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-primary">{validatedCoupon.code} ({validatedCoupon.discountPercentage}%)</span>
+                      <span className="text-primary">-${discount.toFixed(2)}</span>
+                    </div>
                   )}
                   
                   <div className="flex justify-between text-lg font-bold border-t border-border pt-2"><span className="text-foreground">Total</span><span className="text-gradient-sky">${finalTotal.toFixed(2)}</span></div>
